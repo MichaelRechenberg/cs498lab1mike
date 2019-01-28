@@ -1,12 +1,16 @@
-# Main script that continuously captures images from
-#   the Pi's camera and TODO: runs object recognition
-#   on it using Tensorflow, and persists results to 
-#   permanent storage
+# Main script to continuously capture images from
+#  the Pi's camera, run object recognition on it, 
+#  and communicate with brake sensor and head unit
 import logging
+import os
 
 from picamera import PiCamera
-from picam_wrapper import PiCameraWrapper
 
+from picam_wrapper import PiCameraWrapper
+from object_recognition import ObjectRecognition
+
+
+# ================= INITIALIZATION ==========================
 
 # Init logging
 LOGGER_NAME = "LAB1_LOGGER"
@@ -27,37 +31,65 @@ logger.setLevel(logging.INFO)
 logger.info("Initializing camera")
 format = 'rgb'
 camera = PiCamera()
-camera.resolution = (1280, 720)
+CAMERA_VERTICAL_RESOLUTION = 1280
+CAMERA_HORIZONTAL_RESOLUTION = 720
+camera.resolution = (CAMERA_HORIZONTAL_RESOLUTION, CAMERA_VERTICAL_RESOLUTION)
 
 # See PiCameraWrapper.capture_continuous() for what "array resolution" is
-array_resolution = (1280, 720)
+CAPTURE_ARRAY_RESOLUTION = (CAMERA_HORIZONTAL_RESOLUTION, CAMERA_VERTICAL_RESOLUTION)
+
+# Init object recognition
+MODEL_ROOT_DIR = os.path.join(os.getcwd(), "models")
+# Not using a quantized model at the moment since the quantized models 
+#   now use Tensorflow Lite and there isn't a pretty binary to use 
+#   for Tensorflow Lite on Pi (See Discord for more discussion)
+MODEL_NAME = "ssdlite_mobilenet_v2_coco_2018_05_09"
+object_recognition_model = ObjectRecognition(MODEL_ROOT_DIR, MODEL_NAME)
+
+
+# ================= INITIALIZATION ==========================
 
 
 
-# TODO: have this callback actually perform the CV
-def dummy_callback(pic_arr):
-  # mimic some processing
-  print(pic_arr.shape)
-  import time
-  time.sleep(2)
-  print(pic_arr)
-  time.sleep(5)
 
-callback = dummy_callback
-  
+# =================== CORE LOOP =============================
 
+# Trying to perform inference on a high resolution image will take too long
+#  and the models were trained on lower-resolution images like (300x300) or 
+#  (600x600). So we will first resize the raw image captured from the 
+#  camera to these dimensions before passing the resized image to the 
+#  module that performs object recognition
+RESIZED_HORIZONTAL_RESOLUTION = 300
+RESIZED_VERTICAL_RESOLUTION = 300
 
-# Start continuous capture (ends when process is killed/interrupted)
-# If we want finer control over capture, we could use PiCameraWrapper.capture()
+# Not using PiCameraWrapper.capture_continuous() for demonstration purposes
+#  and we may need finer control for multi-threading/networking purposes
 logger.info("Starting continous camera capture")
-PiCameraWrapper.capture_continuous(
-    camera,
-    callback, 
-    array_resolution,
-    format,
-    logger
-)
+while True:
+
+    logging.info("Capturing image")
+    raw_capture_arr = PiCameraWrapper.capture(
+        camera,
+        CAPTURE_ARRAY_RESOLUTION,
+        format
+    )
+
+    resized_capture_arr = cv2.resize(
+        capture_arr,
+        (RESIZED_HORIZONTAL_RESOLUTION, RESIZED_VERTICAL_RESOLUTION),
+        interpolation=cv2.INTER_LINEAR
+    )
+
+    annotated_image, valid_classes, valid_scores = object_recognition_model.detect_objects(
+            resized_capture_arr,
+            SCORE_THRESHOLD
+    )
+
+    # TODO: Send annotated image and classes/scores to head unit
+    # TODO: Send brake light signal to brake unit, receive image data and make decision based on that
+
 
 logger.info("Stopped continous camera capture")
+camera.close()
 
 
