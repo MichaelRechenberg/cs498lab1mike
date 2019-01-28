@@ -39,6 +39,7 @@ camera.resolution = (CAMERA_HORIZONTAL_RESOLUTION, CAMERA_VERTICAL_RESOLUTION)
 CAPTURE_ARRAY_RESOLUTION = (CAMERA_HORIZONTAL_RESOLUTION, CAMERA_VERTICAL_RESOLUTION)
 
 # Init object recognition
+# TODO: change getcwd() to env variable if we want
 MODEL_ROOT_DIR = os.path.join(os.getcwd(), "models")
 # Not using a quantized model at the moment since the quantized models 
 #   now use Tensorflow Lite and there isn't a pretty binary to use 
