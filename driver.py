@@ -100,28 +100,48 @@ def decode_distance_data(binary_ascii_string):
 
 def brake_receiver_worker():
   """Entry point for worker thread listening for the distance data
+
+    This thread receives the brake distance data, decides if we want to break,
+      then sends a signal to the LED brake to turn on or off
+
+    Reads globals DISTANCE_IN_CM, DETECTED_CLASSES, and DETECTED_CLASSES_PROBABILITIES
   """
 
   global logger
   global DISTANCE_IN_CM
 
-  # Init socket communication with brake Arduino (listening for distance)
-  server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
-  server.bind(("", 9000))
-
+  # Init listener socket with brake Arduino (listening for distance)
+  brake_listener_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+  brake_listener_socket.bind(("", 9000))
   logger.info("Worker thread listening for distance data is running")
 
+  # Init sender socket with brake Arudino (to send LED brake signal)
+  ipaddr = "10.0.0.3"
+  port = 8888
+  brake_sender_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+  brake_sender_socket.connect((ipaddr, port))
+
   while True:
-    received_data = server.recvfrom(1024)
+    received_data = brake_listener_socket.recvfrom(1024)
 
     # received_data is a tuple...first component is binary data, second component contains 
     #   information about the other host connected to this socket
     distance_ascii_string = received_data[0][0:3]
     DISTANCE_IN_CM = decode_distance_data(distance_ascii_string)
 
-    # print("Newly received distance in cm: {0}".format(DISTANCE_IN_CM))
+    print("Received distance {0}".format(DISTANCE_IN_CM))
 
-  server.close()
+    # print(DETECTED_CLASSES_PROBABILITIES)
+    if decide_to_brake(DISTANCE_IN_CM, DETECTED_CLASSES, DETECTED_CLASSES_PROBABILITIES):
+      print("Sending TRUE to brake")
+      send_brake_signal(brake_sender_socket, True)
+    else:
+      print("Sending FALSE to brake")
+      send_brake_signal(brake_sender_socket, False)
+
+
+  brake_listener_socket.close()
+  brake_sender_socket.close()
 
 
 # Start thread to receieve distance data from the brake module
@@ -143,45 +163,6 @@ def send_brake_signal(brake_socket, turn_signal_on):
     packet_data = "RP1".encode()
 
   brake_socket.send(packet_data)
-
-
-def brake_sender_worker():
-  """Entry point for the worker thread that sends messages to turn on the LED
-  """
-
-  global logger
-
-  logger.info("Worker thread for sending brake LED message is running")
-
-  # TODO: make intelligent decisions here for when to turn on brake
-  ipaddr = "10.0.0.3"
-  port = 8888
-
-  brake_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
-  brake_socket.connect((ipaddr, port))
-  refresh_rate_ms = 10.0
-  refresh_rate_seconds = float(refresh_rate_ms) / 1000.0
-
-  # print("We out here")
-  while True:
-    #print("Distance in sender worker: {0}".format(DISTANCE_IN_CM))
-    # print(DETECTED_CLASSES)
-    # print(DETECTED_CLASSES_PROBABILITIES)
-    if decide_to_brake(DISTANCE_IN_CM, DETECTED_CLASSES, DETECTED_CLASSES_PROBABILITIES):
-      # print("Sending TRUE to brake")
-      send_brake_signal(brake_socket, True)
-    else:
-      # print("Sending FALSE to brake")
-      send_brake_signal(brake_socket, False)
-
-    time.sleep(refresh_rate_seconds)
-
-  brake_socket.close()
-
-# Start thread for sending brake signal to the Arduino
-logger.info("Starting brake sender thread")
-brake_sender_thread = threading.Thread(target=brake_sender_worker, args=())
-brake_sender_thread.start()
 
 # ================= INITIALIZATION ==========================
 
